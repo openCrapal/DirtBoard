@@ -21,7 +21,8 @@
 #ifndef WiFi_h
 #define WiFi_h
 
-#define WIFI_FIRMWARE_LATEST_VERSION "1.2.1"
+#define WIFI_FIRMWARE_LATEST_VERSION "1.4.8"
+#define WIFI_HAS_FEED_WATCHDOG_FUNC
 
 #include <inttypes.h>
 
@@ -34,6 +35,9 @@ extern "C" {
 #include "WiFiClient.h"
 #include "WiFiSSLClient.h"
 #include "WiFiServer.h"
+#include "WiFiStorage.h"
+
+typedef void(*FeedHostProcessorWatchdogFuncPointer)();
 
 class WiFiClass
 {
@@ -41,6 +45,7 @@ private:
 
     static void init();
     unsigned long _timeout;
+    FeedHostProcessorWatchdogFuncPointer _feed_watchdog_func;
 public:
     WiFiClass();
 
@@ -50,13 +55,13 @@ public:
     static const char* firmwareVersion();
 
 
-    /* Start Wifi connection for OPEN networks
+    /* Start WiFi connection for OPEN networks
      *
      * param ssid: Pointer to the SSID string.
      */
     int begin(const char* ssid);
 
-    /* Start Wifi connection with WEP encryption.
+    /* Start WiFi connection with WEP encryption.
      * Configure a key into the device. The key type (WEP-40, WEP-104)
      * is determined by the size of the key (5 bytes for WEP-40, 13 bytes for WEP-104).
      *
@@ -66,7 +71,7 @@ public:
      */
     int begin(const char* ssid, uint8_t key_idx, const char* key);
 
-    /* Start Wifi connection with passphrase
+    /* Start WiFi connection with passphrase
      * the most secure supported mode will be automatically selected
      *
      * param ssid: Pointer to the SSID string.
@@ -79,6 +84,10 @@ public:
     uint8_t beginAP(const char *ssid, uint8_t channel);
     uint8_t beginAP(const char *ssid, const char* passphrase);
     uint8_t beginAP(const char *ssid, const char* passphrase, uint8_t channel);
+
+    uint8_t beginEnterprise(const char* ssid, const char* username, const char* password);
+    uint8_t beginEnterprise(const char* ssid, const char* username, const char* password, const char* identity);
+    uint8_t beginEnterprise(const char* ssid, const char* username, const char* password, const char* identity, const char* ca);
 
     /* Change Ip configuration settings disabling the dhcp client
         *
@@ -244,6 +253,13 @@ public:
     uint8_t status();
 
     /*
+     * Return The deauthentication reason code.
+     *
+     * return: the deauthentication reason code
+     */
+    uint8_t reasonCode();
+
+    /*
      * Resolve the given hostname to an IP address.
      * param aHostname: Name to be resolved
      * param aResult: IPAddress structure to store the returned IP address
@@ -262,6 +278,9 @@ public:
     int ping(IPAddress host, uint8_t ttl = 128);
 
     void setTimeout(unsigned long timeout);
+
+    void setFeedWatchdogFunc(FeedHostProcessorWatchdogFuncPointer func);
+    void feedWatchdog();
 };
 
 extern WiFiClass WiFi;

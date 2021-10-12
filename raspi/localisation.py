@@ -128,7 +128,7 @@ class loc(Thread):
 				self.pos_teta = local_teta + half_d_teta
 				self.pos_x += d_way * math.cos(local_teta)			# Note that the position is updated this only half of 
 				self.pos_y += d_way * math.sin(local_teta)			# ...the rotation step
-			
+
 				#self.pos_errors = self.Enc_Right.erreur + self.Enc_Left.erreur
 
 			t_sleep = self.cycle_time - time()  + t
@@ -182,9 +182,9 @@ if __name__ == "__main__":
 
 	GPIO.setup(pinLeftA, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 	GPIO.setup(pinLeftB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-	GPIO.setup(pinRightA, GPIO.IN, pull_up_down=GPIO.PUD_UP) 
+	GPIO.setup(pinRightA, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 	GPIO.setup(pinRightB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-	
+
 	def test_kv(Motors):
 		def test_value(value_pwm):
 			i2cDevs.set_speed(value_pwm, value_pwm)
@@ -200,7 +200,7 @@ if __name__ == "__main__":
 			sum_r /= n
 			sum_l /= n
 			print (value_pwm, ";\t", sum_l, ",\t", sum_r, ";\t", MyLoc.get_speed())
-			
+
 		for i in range(0, 90, 1):
 			test_value(i)
 		for i in range(90, -90 , -1):
@@ -238,4 +238,5 @@ if __name__ == "__main__":
 	i2cDevs.set_speed(0,0)
 	i2cDevs.finish()
 	MyLoc.finish()
-	
+
+

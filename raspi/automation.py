@@ -1,4 +1,4 @@
-#!/usr/bin/python3.4
+#!/usr/bin/python3
 # -*-coding:utf-8 -*
 
 # This module provides discreet time differential transfer functions for use in automation applications.
