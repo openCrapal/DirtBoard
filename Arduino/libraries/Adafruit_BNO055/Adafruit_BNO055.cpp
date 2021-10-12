@@ -7,7 +7,7 @@
  *
  *  This is a library for the BNO055 orientation sensor
  *
- *  Designed specifically to work with the Adafruit BNO055 Breakout.
+ *  Designed specifically to work with the Adafruit BNO055 9-DOF Breakout.
  *
  *  Pick one up today in the adafruit shop!
  *  ------> https://www.adafruit.com/product/2472
@@ -40,14 +40,18 @@
  *          sensor ID
  *  @param  address
  *          i2c address
- *  @param  *theWire
+ *  @param  theWire
  *          Wire object
  */
 Adafruit_BNO055::Adafruit_BNO055(int32_t sensorID, uint8_t address,
                                  TwoWire *theWire) {
+// BNO055 clock stretches for 500us or more!
+#ifdef ESP8266
+  theWire->setClockStretchLimit(1000); // Allow for 1000us of clock stretching
+#endif
+
   _sensorID = sensorID;
-  _address = address;
-  _wire = theWire;
+  i2c_dev = new Adafruit_I2CDevice(address, theWire);
 }
 
 /*!
@@ -70,19 +74,10 @@ Adafruit_BNO055::Adafruit_BNO055(int32_t sensorID, uint8_t address,
  *  @return true if process is successful
  */
 bool Adafruit_BNO055::begin(adafruit_bno055_opmode_t mode) {
-#if defined(ARDUINO_SAMD_ZERO) && (_address == BNO055_ADDRESS_A)
-#error                                                                         \
-    "On an arduino Zero, BNO055's ADR pin must be high. Fix that, then delete this line."
-  _address = BNO055_ADDRESS_B;
-#endif
 
-  /* Enable I2C */
-  _wire->begin();
-
-  // BNO055 clock stretches for 500us or more!
-#ifdef ESP8266
-  _wire->setClockStretchLimit(1000); // Allow for 1000us of clock stretching
-#endif
+  if (!i2c_dev->begin()) {
+    return false;
+  }
 
   /* Make sure we have the right device */
   uint8_t id = read8(BNO055_CHIP_ID_ADDR);
@@ -99,6 +94,8 @@ bool Adafruit_BNO055::begin(adafruit_bno055_opmode_t mode) {
 
   /* Reset */
   write8(BNO055_SYS_TRIGGER_ADDR, 0x20);
+  /* Delay incrased to 30ms due to power issues https://tinyurl.com/y375z699 */
+  delay(30);
   while (read8(BNO055_CHIP_ID_ADDR) != BNO055_ID) {
     delay(10);
   }
@@ -458,7 +455,7 @@ imu::Quaternion Adafruit_BNO055::getQuat() {
   /*!
    * Assign to Quaternion
    * See
-   * http://ae-bst.resource.bosch.com/media/products/dokumente/bno055/BST_BNO055_DS000_12~1.pdf
+   * https://cdn-shop.adafruit.com/datasheets/BST_BNO055_DS000_12.pdf
    * 3.6.5.5 Orientation (Quaternion)
    */
   const double scale = (1.0 / (1 << 14));
@@ -469,6 +466,7 @@ imu::Quaternion Adafruit_BNO055::getQuat() {
 /*!
  *  @brief  Provides the sensor_t data for this sensor
  *  @param  sensor
+ *          Sensor description
  */
 void Adafruit_BNO055::getSensor(sensor_t *sensor) {
   /* Clear the sensor_t object */
@@ -489,6 +487,7 @@ void Adafruit_BNO055::getSensor(sensor_t *sensor) {
 /*!
  *  @brief  Reads the sensor and returns the data as a sensors_event_t
  *  @param  event
+ *          Event description
  *  @return always returns true
  */
 bool Adafruit_BNO055::getEvent(sensors_event_t *event) {
@@ -512,12 +511,13 @@ bool Adafruit_BNO055::getEvent(sensors_event_t *event) {
 /*!
  *  @brief  Reads the sensor and returns the data as a sensors_event_t
  *  @param  event
+ *          Event description
  *  @param  vec_type
  *          specify the type of reading
  *  @return always returns true
  */
-bool Adafruit_BNO055::getEvent(sensors_event_t *event, adafruit_vector_type_t vec_type)
-{
+bool Adafruit_BNO055::getEvent(sensors_event_t *event,
+                               adafruit_vector_type_t vec_type) {
   /* Clear the event */
   memset(event, 0, sizeof(sensors_event_t));
 
@@ -525,55 +525,44 @@ bool Adafruit_BNO055::getEvent(sensors_event_t *event, adafruit_vector_type_t ve
   event->sensor_id = _sensorID;
   event->timestamp = millis();
 
-  //read the data according to vec_type
+  // read the data according to vec_type
   imu::Vector<3> vec;
-  if (vec_type == Adafruit_BNO055::VECTOR_LINEARACCEL)
-  {
-    event->type = SENSOR_TYPE_ACCELEROMETER;
+  if (vec_type == Adafruit_BNO055::VECTOR_LINEARACCEL) {
+    event->type = SENSOR_TYPE_LINEAR_ACCELERATION;
     vec = getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
 
     event->acceleration.x = vec.x();
     event->acceleration.y = vec.y();
     event->acceleration.z = vec.z();
-  }
-  else if (vec_type == Adafruit_BNO055::VECTOR_ACCELEROMETER)
-  {
+  } else if (vec_type == Adafruit_BNO055::VECTOR_ACCELEROMETER) {
     event->type = SENSOR_TYPE_ACCELEROMETER;
     vec = getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
 
     event->acceleration.x = vec.x();
     event->acceleration.y = vec.y();
     event->acceleration.z = vec.z();
-  }
-  else if (vec_type == Adafruit_BNO055::VECTOR_GRAVITY)
-  {
-    event->type = SENSOR_TYPE_ACCELEROMETER;
+  } else if (vec_type == Adafruit_BNO055::VECTOR_GRAVITY) {
+    event->type = SENSOR_TYPE_GRAVITY;
     vec = getVector(Adafruit_BNO055::VECTOR_GRAVITY);
 
     event->acceleration.x = vec.x();
     event->acceleration.y = vec.y();
     event->acceleration.z = vec.z();
-  }
-  else if (vec_type == Adafruit_BNO055::VECTOR_EULER)
-  {
+  } else if (vec_type == Adafruit_BNO055::VECTOR_EULER) {
     event->type = SENSOR_TYPE_ORIENTATION;
     vec = getVector(Adafruit_BNO055::VECTOR_EULER);
 
     event->orientation.x = vec.x();
     event->orientation.y = vec.y();
     event->orientation.z = vec.z();
-  }
-  else if (vec_type == Adafruit_BNO055::VECTOR_GYROSCOPE)
-  {
-    event->type = SENSOR_TYPE_ROTATION_VECTOR;
+  } else if (vec_type == Adafruit_BNO055::VECTOR_GYROSCOPE) {
+    event->type = SENSOR_TYPE_GYROSCOPE;
     vec = getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
 
-    event->gyro.x = vec.x();
-    event->gyro.y = vec.y();
-    event->gyro.z = vec.z();
-  }
-  else if (vec_type == Adafruit_BNO055::VECTOR_MAGNETOMETER)
-  {
+    event->gyro.x = vec.x() * SENSORS_DPS_TO_RADS;
+    event->gyro.y = vec.y() * SENSORS_DPS_TO_RADS;
+    event->gyro.z = vec.z() * SENSORS_DPS_TO_RADS;
+  } else if (vec_type == Adafruit_BNO055::VECTOR_MAGNETOMETER) {
     event->type = SENSOR_TYPE_MAGNETIC_FIELD;
     vec = getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER);
 
@@ -581,15 +570,14 @@ bool Adafruit_BNO055::getEvent(sensors_event_t *event, adafruit_vector_type_t ve
     event->magnetic.y = vec.y();
     event->magnetic.z = vec.z();
   }
-  
 
   return true;
 }
 
-
 /*!
  *  @brief  Reads the sensor's offset registers into a byte array
  *  @param  calibData
+ *          Calibration offset (buffer size should be 22)
  *  @return true if read is successful
  */
 bool Adafruit_BNO055::getSensorOffsets(uint8_t *calibData) {
@@ -668,7 +656,7 @@ bool Adafruit_BNO055::getSensorOffsets(
 
 /*!
  *  @brief  Writes an array of calibration values to the sensor's offset
- *  @param  *calibData
+ *  @param  calibData
  *          calibration data
  */
 void Adafruit_BNO055::setSensorOffsets(const uint8_t *calibData) {
@@ -831,41 +819,17 @@ void Adafruit_BNO055::enterNormalMode() {
  *  @brief  Writes an 8 bit value over I2C
  */
 bool Adafruit_BNO055::write8(adafruit_bno055_reg_t reg, byte value) {
-  _wire->beginTransmission(_address);
-#if ARDUINO >= 100
-  _wire->write((uint8_t)reg);
-  _wire->write((uint8_t)value);
-#else
-  _wire->send(reg);
-  _wire->send(value);
-#endif
-  _wire->endTransmission();
-
-  /* ToDo: Check for error! */
-  return true;
+  uint8_t buffer[2] = {(uint8_t)reg, (uint8_t)value};
+  return i2c_dev->write(buffer, 2);
 }
 
 /*!
  *  @brief  Reads an 8 bit value over I2C
  */
 byte Adafruit_BNO055::read8(adafruit_bno055_reg_t reg) {
-  byte value = 0;
-
-  _wire->beginTransmission(_address);
-#if ARDUINO >= 100
-  _wire->write((uint8_t)reg);
-#else
-  _wire->send(reg);
-#endif
-  _wire->endTransmission();
-  _wire->requestFrom(_address, (byte)1);
-#if ARDUINO >= 100
-  value = _wire->read();
-#else
-  value = _wire->receive();
-#endif
-
-  return value;
+  uint8_t buffer[1] = {reg};
+  i2c_dev->write_then_read(buffer, 1, buffer, 1);
+  return (byte)buffer[0];
 }
 
 /*!
@@ -873,23 +837,6 @@ byte Adafruit_BNO055::read8(adafruit_bno055_reg_t reg) {
  */
 bool Adafruit_BNO055::readLen(adafruit_bno055_reg_t reg, byte *buffer,
                               uint8_t len) {
-  _wire->beginTransmission(_address);
-#if ARDUINO >= 100
-  _wire->write((uint8_t)reg);
-#else
-  _wire->send(reg);
-#endif
-  _wire->endTransmission();
-  _wire->requestFrom(_address, (byte)len);
-
-  for (uint8_t i = 0; i < len; i++) {
-#if ARDUINO >= 100
-    buffer[i] = _wire->read();
-#else
-    buffer[i] = _wire->receive();
-#endif
-  }
-
-  /* ToDo: Check for errors! */
-  return true;
+  uint8_t reg_buf[1] = {(uint8_t)reg};
+  return i2c_dev->write_then_read(reg_buf, 1, buffer, len);
 }
